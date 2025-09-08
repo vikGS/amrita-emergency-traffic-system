@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emergency Vehicle Dashboard</title>
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f3f4f6; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; }
+    .dashboard { background:white; padding: 20px 40px; border-radius: 20px; box-shadow:0 10px 20px rgba(0,0,0,0.1); max-width:800px; width:100%; }
+    .header { text-align:center; margin-bottom:20px; }
+    .header h1 { font-size:2rem; margin:0; }
+    .header p { color:#6b7280; }
+    .card { background:#f9fafb; padding:15px 20px; border-radius:15px; margin-bottom:15px; transition:0.3s; }
+    .card.offline { background:#e5e7eb; }
+    .status-alert { color:#dc2626; font-weight:bold; }
+    .status-normal { color:#16a34a; font-weight:bold; }
+    #userIdDisplay { font-family: monospace; background:#e5e7eb; padding:5px 10px; border-radius:10px; display:inline-block; margin-top:5px; }
+  </style>
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="header">
+    <h1>Emergency Vehicle Dashboard</h1>
+    <p>Real-time status and detection history from our cameras.</p>
+    <div id="userIdDisplay">User ID: N/A</div>
+    <p id="status">Connecting...</p>
+  </div>
+  <div id="devices-container"></div>
+</div>
+
+<script>
+  // ----- Firebase configuration -----
+  const firebaseConfig = {
+  apiKey: "AIzaSyBFDaTDehXJ3N9oHUZq0IxAKlJ9PTAJz2s",
+  authDomain: "emergency-nav.firebaseapp.com",
+  databaseURL: "https://emergency-nav-default-rtdb.firebaseio.com",
+  projectId: "emergency-nav",
+  storageBucket: "emergency-nav.firebasestorage.app",
+  messagingSenderId: "763743403286",
+  appId: "1:763743403286:web:7cf745bb0595330d4ee437",
+  
+};
+
+  // Initialize Firebase
+  const app = firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  const devicesContainer = document.getElementById('devices-container');
+  const statusEl = document.getElementById('status');
+  const userIdEl = document.getElementById('userIdDisplay');
+
+  function isDeviceOffline(timestamp) {
+    if (!timestamp) return true;
+    const lastUpdated = new Date(timestamp);
+    const now = new Date();
+    return (now - lastUpdated)/1000 > 30;
+  }
+
+  function renderDevices(devices) {
+    devicesContainer.innerHTML = '';
+    devices.forEach(device => {
+      const offline = isDeviceOffline(device.timestamp);
+      const card = document.createElement('div');
+      card.className = 'card' + (offline ? ' offline' : '');
+      card.innerHTML = `
+        <h3>Camera: ${device.deviceId || device.id}</h3>
+        <p>Status: <span class="${offline ? '' : device.status === 'Alert' ? 'status-alert' : 'status-normal'}">
+          ${offline ? 'Offline' : device.status}
+        </span></p>
+        <p>Detected Vehicles: <strong>${device.totalDetections || 0}</strong></p>
+        <p>Last Updated: ${device.timestamp ? new Date(device.timestamp).toLocaleTimeString() : '--'}</p>
+      `;
+      devicesContainer.appendChild(card);
+    });
+  }
+
+  // ----- Firebase Authentication -----
+  auth.onAuthStateChanged(async user => {
+    if (user) {
+      userIdEl.textContent = 'User ID: ' + user.uid;
+      statusEl.textContent = 'Connected. Listening for vehicle data...';
+
+      // ----- Firestore listener -----
+      const vehiclesCol = db.collection('artifacts/YOUR_APP_ID/public/data/emergency_vehicles_live');
+      vehiclesCol.onSnapshot(snapshot => {
+        const devices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderDevices(devices);
+        statusEl.textContent = 'Dashboard updated at ' + new Date().toLocaleTimeString();
+      }, error => {
+        console.error('Firestore error:', error);
+        statusEl.textContent = 'Error fetching data. Check console.';
+      });
+
+    } else {
+      // Sign in anonymously
+      auth.signInAnonymously().catch(error => {
+        console.error('Auth error:', error);
+        statusEl.textContent = 'Authentication failed.';
+      });
+    }
+  });
+</script>
+
+</body>
+</html>
+
